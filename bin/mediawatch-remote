@@ -1,0 +1,85 @@
+#!/bin/bash
+
+DEBUG=false
+extfilter='\.(mov|mp4|mpe?g|mts|mxf)'
+
+director=$(pwd | sed "s|.*/castings/||" | cut -d / -f 1);
+export PATH=$PATH:$(basename "$0")
+which helpers >/dev/null && . $(which helpers) || exit 1
+
+for conf in /etc/casting ~/etc/casting /etc/$PGM /usr/local/etc/$PGM ~/etc/$PGM
+do
+    [ -f $conf ] && . $conf
+done
+
+if [ ! "$@" ]
+then
+  if [ "$director" = "" ]
+  then
+    sources=~/castings/*/upload/files/
+  else
+    sources=~/castings/$director/upload/files/
+  fi
+else
+  sources=$@
+fi
+[ -d "$sources/tmp" ] \
+&& phptmp=$sources/tmp \
+|| phptmp=~/domains/wrap.rocks/tmp
+
+which notify-send >/dev/null || log $? "Command 'notify-send' not found, but can be installed with:
+sudo apt install libnotify-bin"
+function notify() {
+  [ "$1" = "" ] && return
+  echo "$@" >&2
+  notify-send -u critical "$@"
+  which tts >/dev/null && tts "$@" >/dev/null 2>/dev/null
+}
+
+log "watching $sources"
+
+if echo "$remote" | grep -q ":"
+then
+  log "remote $remote"
+  remotehost=$(echo "$remote" | cut -d : -f 1)
+  remotepath=$(echo "$remote" | cut -d : -f 2)
+  if [ "$1" ]
+  then
+    client="$1"
+  elif [ ! "$client" ]
+  then
+    client="*"
+  fi
+fi
+log "client $client"
+
+while true
+do
+  # if [ "$remote" -a "$remotehost" ]
+  if true
+  then
+    [ "$client" = "" ] && client="*"
+    printf "$(date) (connecting $remotehost)\r"
+    ssh $remotehost "ls $remotepath/$client/upload/files/tmp/php* || ls $remotepath/$client/upload/files/*.* | egrep -i '$extfilter'" 2>/dev/null | tee $TMP.uploads
+    if grep -q '[[:alnum:]]' $TMP.uploads
+    then
+      remotedirector=$(cat $TMP.uploads | sed "s:$remotepath/::" | cut -d "/" -f 1 | sort -u)
+      if [ "$director" = "$remotedirector" -o "$director" = "" ]
+      then
+        printf "\r\033[K"
+        date
+        notification="Un envoi est en cours sur $remotehost"
+        [ "$director" ] && notification="$notification pour $director"
+        notify "$notification"
+        [ "$DEBUG" = "true" ] && printf "$_\n"
+        break
+      fi
+    fi
+
+    printf "\033[K$(date)"
+    read -t 5
+    printf "\r\033[K";
+  fi
+
+  read -t 1
+done

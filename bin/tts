@@ -1,0 +1,36 @@
+#!/bin/bash
+
+voice=${voice-fr4}
+evoice=mb-$voice
+mvoice=$voice
+pitch=${pitch-90}
+speed=${speed-120}
+amplitude=${amplitude-50}
+# [ ! "$amplitude" ] && amplitude=50
+
+TTS=$(which espeak-ng) || TTS=$(which espeak) || TTS=$(which say) || TTS=cat
+TTS=$(basename "$TTS")
+PLAYER=$(which paplay) || PLAYER=$(which aplay) || PLAYER=$(which mplayer)
+
+[ "$1" ] || exit
+[ "$1" = "-u" ] && prefix="$(whoami)? " && shift
+string="$prefix$@"
+
+case $TTS in
+  espeak*)
+    $TTS -k20 -a $amplitude -v $evoice -s $speed -p $pitch "$string"
+    exit $?
+    ;;
+  mbrola)
+    [ -f "$mvoice" ] || mvoice=/usr/share/mbrola/$mvoice/$mvoice
+    espeak -a $amplitude -v $evoice -s $speed -p $pitch "$string" --pho \
+    | mbrola $mvoice - -.au | paplay >/dev/null 2>/dev/null
+    exit $?
+    ;;
+  say)
+    say "$string"
+    ;;
+  *)
+    echo "$string"
+  ;;
+esac
